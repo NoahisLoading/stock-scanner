@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 
 import argparse, warnings, time, csv, logging
 from datetime import datetime, timezone
