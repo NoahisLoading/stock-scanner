@@ -2,7 +2,7 @@
 
 import argparse, warnings, time, csv, logging
 from datetime import datetime, timezone
-warnings.filterwarnings(“ignore”)
+
 import yfinance as yf
 import pandas as pd
 import ta
