@@ -124,7 +124,7 @@ WATCHLISTS = {
     },
     "tech_ai": {
         "name": "💻 Tech / AI / Chips",
-        "tickers": ["NVDA","AMD","INTC","QCOM","AVGO","TXN","MU","AMAT","LRCX","KLAC","ASML","TSMC","MSFT","GOOGL","META","ORCL","CRM","NOW","ADBE","SNOW","PLTR","CRWD","PANW","DDOG","ZS","NET","MDB","OKTA"]
+        "tickers": ["NVDA","AMD","INTC","QCOM","AVGO","TXN","MU","AMAT","LRCX","KLAC","ASML","TSM","MSFT","GOOGL","META","ORCL","CRM","NOW","ADBE","SNOW","PLTR","CRWD","PANW","DDOG","ZS","NET","MDB","OKTA"]
     },
     "energy_resources": {
         "name": "⚡ Energy / Rohstoffe",
@@ -132,7 +132,7 @@ WATCHLISTS = {
     },
     "dividends": {
         "name": "💰 Dividenden",
-        "tickers": ["KO","PEP","PG","JNJ","MMM","T","VZ","MO","PM","ABT","MRK","PFE","ABBV","O","REALTY"]
+        "tickers": ["KO","PEP","PG","JNJ","MMM","T","VZ","MO","PM","ABT","MRK","PFE","ABBV","O"]
     },
     "ipos": {
         "name": "🆕 IPOs 2023/2024",
