@@ -1,13 +1,4 @@
-#!/usr/bin/env python3
-“””
-Stock Scanner v3.1
-v2.x: EUR-API, RSI-Window, NaN-Guards, GBp-Dynamik, Delisting-7d, Weekly-RSI-Penalty,
-–min-score, SPY-3mo, SMA20/BB→close_full, ATR-SL Backtest, Watchlist-Cleanup
-v3.0: Duplikate entfernt (IREN/XYZ), Score-Konstanten, RSI-Cache, ATR O(n), sleep 0.01,
-ATR EUR-konvertiert in Scan, score_map aus details, RSI aus Cache in cmd_info
-v3.1: Score/RSI Farb-Coding, cmd_info -p Period, LONG+SHORT Risiko-Tabelle,
-ATR-Index Backtest (iloc[i]), All-equal-Scores Edge Case
-“””
+#!/usr/bin/env python
 
 import argparse, warnings, time, csv, logging
 from datetime import datetime, timezone
