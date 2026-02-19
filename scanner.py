@@ -108,7 +108,7 @@ WATCHLISTS = {
     },
     "dax40": {
         "name": "🇩🇪 DAX 40",
-        "tickers": ["SAP.DE","SIE.DE","ALV.DE","MBG.DE","BMW.DE","MUV2.DE","DTE.DE","BAYN.DE","BAS.DE","VOW3.DE","HEN3.DE","IFX.DE","DB1.DE","ADS.DE","HEI.DE","MRK.DE","FME.DE","RHM.DE","SHL.DE","BEI.DE","AIR.DE","CON.DE","DHL.DE","EOAN.DE","FRE.DE","HNR1.DE","LIN.DE","PAH3.DE","PUM.DE","QIA.DE","RWE.DE","SY1.DE","VNA.DE","1COV.DE","ZAL.DE","MTX.DE","PNE3.DE","SZG.DE","WAF.DE","BC8.DE"]
+        "tickers": ["SAP.DE","SIE.DE","ALV.DE","MBG.DE","BMW.DE","MUV2.DE","DTE.DE","BAYN.DE","BAS.DE","VOW3.DE","HEN3.DE","IFX.DE","DB1.DE","ADS.DE","HEI.DE","MRK.DE","FME.DE","RHM.DE","SHL.DE","BEI.DE","AIR.DE","CON.DE","DHL.DE","EOAN.DE","FRE.DE","HNR1.DE","LIN.DE","PAH3.DE","PUM.DE","QIA.DE","RWE.DE","SY1.DE","VNA.DE","ZAL.DE","MTX.DE","PNE3.DE","SZG.DE","WAF.DE","BC8.DE"]
     },
     "europe_stoxx": {
         "name": "🇪🇺 Europa STOXX",
