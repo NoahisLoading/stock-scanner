@@ -148,7 +148,7 @@ WATCHLISTS = {
     },
     "banks_fintech": {
         "name": "🏦 Banken / Fintech",
-        "tickers": ["JPM","BAC","WFC","C","GS","MS","USB","PNC","TFC","COF","BRK-B","AIG","MET","SQ","PYPL","AFRM","SOFI"]
+        "tickers": ["JPM","BAC","WFC","C","GS","MS","USB","PNC","TFC","COF","BRK-B","AIG","MET","XYZ","PYPL","AFRM","SOFI"]
     },
     "reits": {
         "name": "🏢 REITs / Immobilien",
