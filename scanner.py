@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 “””
-Stock Scanner v2.9
-FIXES: EUR-API, RSI-Window, NaN-Guards, GBp-Dynamik, Delisting-7d, Weekly-RSI-Penalty, –min-score
-v2.9: SPY-3mo, SMA20/BB→close_full, ATR-SL Backtest, Watchlist-Cleanup
+Stock Scanner v3.0
+v2.x: EUR-API, RSI-Window, NaN-Guards, GBp-Dynamik, Delisting-7d, Weekly-RSI-Penalty,
+–min-score, SPY-3mo, SMA20/BB→close_full, ATR-SL Backtest, Watchlist-Cleanup
+v3.0: Duplikate entfernt (IREN/XYZ), Score-Konstanten, RSI-Cache, ATR O(n), sleep 0.01
 “””
 
 import argparse, warnings, time, csv, logging
@@ -23,6 +24,11 @@ import urllib.request, json
 console = Console()
 logging.basicConfig(level=logging.WARNING, format=”%(levelname)s: %(message)s”)
 
+# Absolute Score-Schwellen für Einzel-Ticker-Ansicht (cmd_info)
+
+SCORE_LONG  =  4
+SCORE_SHORT =  0
+
 # SPY-Cache
 
 _spy_cache = None
@@ -36,7 +42,7 @@ logging.warning(f”SPY-Abruf fehlgeschlagen: {e}”)
 _spy_cache = pd.Series(dtype=float)
 return _spy_cache
 
-# FIX 1: open.er-api.com primär, Frankfurter Fallback
+# Währungsumrechnung: open.er-api.com primär, Frankfurter Fallback
 
 def get_eur_rates():
 headers = {“User-Agent”: “StockScanner”}
@@ -58,7 +64,7 @@ except Exception as e:
 logging.warning(f”EUR-API {url} nicht erreichbar: {e}”)
 return {“USD”: 0.952, “GBP”: 1.185, “CHF”: 1.063, “JPY”: 0.0063, “EUR”: 1.0}
 
-# FIX 4: Dynamische GBp/GBP-Erkennung für .L-Ticker
+# Dynamische GBp/GBP-Erkennung für .L-Ticker
 
 def get_currency(ticker, last_price=None):
 if ticker.endswith((”.DE”, “.PA”, “.AS”, “.MI”, “.MC”, “.BR”, “.VI”)):
@@ -142,7 +148,7 @@ WATCHLISTS = {
 },
 “ipos”: {
 “name”: “🆕 IPOs 2023/2024”,
-“tickers”: [“ARM”,“KVYO”,“CART”,“BIRK”,“RDDT”,“RBRK”,“IREN”,“IONQ”,“ASTS”,“ACHR”,“JOBY”]
+“tickers”: [“ARM”,“KVYO”,“CART”,“BIRK”,“RDDT”,“RBRK”,“IONQ”,“ASTS”,“ACHR”,“JOBY”]
 },
 “crypto_stocks”: {
 “name”: “₿ Crypto Stocks”,
@@ -154,7 +160,7 @@ WATCHLISTS = {
 },
 “banks_fintech”: {
 “name”: “🏦 Banken / Fintech”,
-“tickers”: [“JPM”,“BAC”,“WFC”,“C”,“GS”,“MS”,“USB”,“PNC”,“TFC”,“COF”,“BRK-B”,“AIG”,“MET”,“XYZ”,“PYPL”,“AFRM”,“SOFI”]
+“tickers”: [“JPM”,“BAC”,“WFC”,“C”,“GS”,“MS”,“USB”,“PNC”,“TFC”,“COF”,“BRK-B”,“AIG”,“MET”,“PYPL”,“AFRM”,“SOFI”]
 },
 “reits”: {
 “name”: “🏢 REITs / Immobilien”,
@@ -175,7 +181,7 @@ tickers.append(name.upper())
 seen = set()
 return [t for t in tickers if not (t in seen or seen.add(t))]
 
-# FIX 5: Delisting-Limit 30 → 7 Tage + timezone-safe
+# Delisting-Erkennung: Keine Daten älter als 7 Tage akzeptieren
 
 def lade_daten(ticker, period=“1y”):
 try:
@@ -207,8 +213,6 @@ except Exception as e:
 logging.debug(f”ATR-Berechnung: {e}”)
 return None
 
-# FIX 2+3+6: RSI auf vollem Close, NaN-Guards, Weekly-RSI > 80 = -1
-
 def berechne_score(df, spy_returns=None):
 if df.empty or len(df) < 50:
 return 0, {}
@@ -234,6 +238,7 @@ try:
 
     rsi_val = ta.momentum.RSIIndicator(close_full, window=14).rsi().iloc[-1]
     if not pd.isna(rsi_val):
+        details["rsi_raw"] = rsi_val
         if rsi_val < 35:
             score += 2; details["RSI"] = "+2"
         elif rsi_val < 50:
@@ -276,7 +281,7 @@ try:
         if weekly.iloc[-1] > weekly.iloc[-2]:
             score += 1; details["Weekly"] = "+1"
 
-    # FIX 6: Weekly-RSI > 80 = -1 Überhitzungs-Signal
+    # Weekly-RSI > 80: Überhitzungs-Penalty
     if len(weekly) >= 15:
         w_rsi_score = ta.momentum.RSIIndicator(weekly, window=14).rsi().iloc[-1]
         if not pd.isna(w_rsi_score) and w_rsi_score > 80:
@@ -345,8 +350,6 @@ console.print("  scanner backtest NVDA -p 2y -v")
 console.print("  scanner backtest dax40 -p 1y --depot 25000")
 ```
 
-# FIX 7: cmd_scan mit –min-score Flag
-
 def cmd_scan(args):
 list_names = args.list.split(”,”) if args.list else [“us_large_cap”]
 tickers = get_tickers(list_names)
@@ -392,13 +395,14 @@ with Progress(
 
         if not df.empty:
             try:
-                rsi_val = f"{ta.momentum.RSIIndicator(df['Close'], window=14).rsi().iloc[-1]:.0f}"
+                rsi_raw = details.get("rsi_raw")
+                rsi_val = f"{rsi_raw:.0f}" if rsi_raw is not None else "-"
                 kurs_raw = df["Close"].iloc[-1]
                 kurs_eur = to_eur(kurs_raw, ticker, rates, last_price=kurs_raw)
                 kurs_val = f"{kurs_eur:.2f}€"
                 atr_val = berechne_atr(df)
             except Exception as e:
-                logging.warning(f"{ticker} Kurs/RSI: {e}")
+                logging.warning(f"{ticker} Kurs/ATR: {e}")
 
         ergebnisse.append({
             "ticker": ticker + (" ⚠" if split_flag else ""),
@@ -411,7 +415,7 @@ with Progress(
             "details": details,
         })
         progress.advance(task)
-        time.sleep(0.05)
+        time.sleep(0.01)
 
 scores = [e["score"] for e in ergebnisse]
 long_count = short_count = neutral_count = 0
@@ -448,7 +452,7 @@ else:
     ergebnisse_show = ergebnisse
 
 table = Table(
-    title=f"📊 STOCK SCANNER v2.9 – {datetime.now().strftime('%d.%m.%Y %H:%M')}",
+    title=f"📊 STOCK SCANNER v3.0 – {datetime.now().strftime('%d.%m.%Y %H:%M')}",
     box=box.ROUNDED
 )
 table.add_column("Ticker", style="cyan", no_wrap=True)
@@ -548,9 +552,9 @@ if w_rsi and not pd.isna(w_rsi):
 else:
     wt_str = "n/a"
 
-if score >= 4:
+if score >= SCORE_LONG:
     sig_str = f"[green]🟢 LONG[/] (Score: {score})"
-elif score <= 0:
+elif score <= SCORE_SHORT:
     sig_str = f"[red]🔴 SHORT[/] (Score: {score})"
 else:
     sig_str = f"[yellow]🟡 NEUTRAL[/] (Score: {score})"
@@ -681,7 +685,7 @@ console.print(Panel(
     f"[bold]Depot:[/] {depot:,.0f}€\n"
     f"[bold]Strategie:[/] Score Top 20% = LONG | Bottom 20% = SHORT\n"
     f"[bold]Schwelle:[/] rollierend (kein Look-Ahead)",
-    title=f"📊 Backtest v2.9 – {label}", border_style="blue"
+    title=f"📊 Backtest v3.0 – {label}", border_style="blue"
 ))
 
 rates = get_eur_rates()
@@ -715,6 +719,14 @@ with Progress(
                 progress.advance(task)
                 continue
 
+            # ATR-Serie einmal vorausberechnen (O(n) statt O(n²) im Trade-Loop)
+            try:
+                atr_series = ta.volatility.AverageTrueRange(
+                    df["High"], df["Low"], df["Close"], window=14
+                ).average_true_range()
+            except Exception:
+                atr_series = pd.Series(dtype=float, index=df.index)
+
             trades = []
             equity = depot
             next_trade_idx = 0
@@ -741,9 +753,9 @@ with Progress(
 
                 if score >= long_thresh:
                     ret = (verkauf / kauf - 1) * 100
-                    atr_val = berechne_atr(df.iloc[:i])
-                    if atr_val and atr_val > 0:
-                        atr_eur = to_eur(atr_val, ticker, rates, last_price=kauf)
+                    atr_raw = atr_series.iloc[i - 1] if i > 0 and not pd.isna(atr_series.iloc[i - 1]) else None
+                    if atr_raw and atr_raw > 0:
+                        atr_eur = to_eur(atr_raw, ticker, rates, last_price=kauf)
                         sl_dist = max(2 * atr_eur, kauf_eur * 0.02)
                     else:
                         sl_dist = kauf_eur * 0.05
@@ -762,9 +774,9 @@ with Progress(
 
                 elif score <= short_thresh:
                     ret = (kauf / verkauf - 1) * 100
-                    atr_val = berechne_atr(df.iloc[:i])
-                    if atr_val and atr_val > 0:
-                        atr_eur = to_eur(atr_val, ticker, rates, last_price=kauf)
+                    atr_raw = atr_series.iloc[i - 1] if i > 0 and not pd.isna(atr_series.iloc[i - 1]) else None
+                    if atr_raw and atr_raw > 0:
+                        atr_eur = to_eur(atr_raw, ticker, rates, last_price=kauf)
                         sl_dist = max(2 * atr_eur, kauf_eur * 0.02)
                     else:
                         sl_dist = kauf_eur * 0.05
@@ -886,7 +898,7 @@ elif gesamt_wr >= 60:
 
 def main():
 parser = argparse.ArgumentParser(
-description=“📊 Stock Scanner v2.9”,
+description=“📊 Stock Scanner v3.0”,
 formatter_class=argparse.RawDescriptionHelpFormatter,
 epilog=”””
 Beispiele:
