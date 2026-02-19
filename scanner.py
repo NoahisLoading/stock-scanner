@@ -140,7 +140,7 @@ WATCHLISTS = {
     },
     "crypto_stocks": {
         "name": "₿ Crypto Stocks",
-        "tickers": ["COIN","MSTR","MARA","RIOT","CLSK","CIFR","BITF","HUT","IREN","WULF","SQ","HOOD"]
+        "tickers": ["COIN","MSTR","MARA","RIOT","CLSK","CIFR","BITF","HUT","IREN","WULF","XYZ","HOOD"]
     },
     "healthcare": {
         "name": "🏥 Healthcare / Biotech",
