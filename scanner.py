@@ -1,9 +1,12 @@
 #!/usr/bin/env python3
 “””
-Stock Scanner v3.0
+Stock Scanner v3.1
 v2.x: EUR-API, RSI-Window, NaN-Guards, GBp-Dynamik, Delisting-7d, Weekly-RSI-Penalty,
 –min-score, SPY-3mo, SMA20/BB→close_full, ATR-SL Backtest, Watchlist-Cleanup
-v3.0: Duplikate entfernt (IREN/XYZ), Score-Konstanten, RSI-Cache, ATR O(n), sleep 0.01
+v3.0: Duplikate entfernt (IREN/XYZ), Score-Konstanten, RSI-Cache, ATR O(n), sleep 0.01,
+ATR EUR-konvertiert in Scan, score_map aus details, RSI aus Cache in cmd_info
+v3.1: Score/RSI Farb-Coding, cmd_info -p Period, LONG+SHORT Risiko-Tabelle,
+ATR-Index Backtest (iloc[i]), All-equal-Scores Edge Case
 “””
 
 import argparse, warnings, time, csv, logging
@@ -400,7 +403,8 @@ with Progress(
                 kurs_raw = df["Close"].iloc[-1]
                 kurs_eur = to_eur(kurs_raw, ticker, rates, last_price=kurs_raw)
                 kurs_val = f"{kurs_eur:.2f}€"
-                atr_val = berechne_atr(df)
+                atr_raw = berechne_atr(df)
+                atr_val = to_eur(atr_raw, ticker, rates, last_price=kurs_raw) if atr_raw else None
             except Exception as e:
                 logging.warning(f"{ticker} Kurs/ATR: {e}")
 
@@ -435,15 +439,20 @@ if scores:
     else:
         scores_sorted = sorted(scores)
         n = len(scores_sorted)
-        long_threshold = scores_sorted[int(n * 0.8)]
+        long_threshold  = scores_sorted[int(n * 0.8)]
         short_threshold = scores_sorted[int(n * 0.2)]
-        for e in ergebnisse:
-            if e["score"] >= long_threshold:
-                e["signal"] = "🟢 LONG"; long_count += 1
-            elif e["score"] <= short_threshold:
-                e["signal"] = "🔴 SHORT"; short_count += 1
-            else:
+        # Edge case: wenn alle Scores gleich sind, niemanden klassifizieren
+        if long_threshold == short_threshold:
+            for e in ergebnisse:
                 e["signal"] = "🟡 NEUTRAL"; neutral_count += 1
+        else:
+            for e in ergebnisse:
+                if e["score"] >= long_threshold:
+                    e["signal"] = "🟢 LONG"; long_count += 1
+                elif e["score"] <= short_threshold:
+                    e["signal"] = "🔴 SHORT"; short_count += 1
+                else:
+                    e["signal"] = "🟡 NEUTRAL"; neutral_count += 1
 
 if hasattr(args, "only") and args.only:
     filter_map = {"long": "🟢 LONG", "short": "🔴 SHORT", "neutral": "🟡 NEUTRAL"}
@@ -452,7 +461,7 @@ else:
     ergebnisse_show = ergebnisse
 
 table = Table(
-    title=f"📊 STOCK SCANNER v3.0 – {datetime.now().strftime('%d.%m.%Y %H:%M')}",
+    title=f"📊 STOCK SCANNER v3.1 – {datetime.now().strftime('%d.%m.%Y %H:%M')}",
     box=box.ROUNDED
 )
 table.add_column("Ticker", style="cyan", no_wrap=True)
@@ -460,11 +469,20 @@ table.add_column("Kurs €", justify="right", style="green")
 table.add_column("Score", justify="right")
 table.add_column("Signal", style="bold magenta")
 table.add_column("RSI", justify="right")
-table.add_column("ATR", justify="right", style="dim")
+table.add_column("ATR €", justify="right", style="dim")
 
 for e in sorted(ergebnisse_show, key=lambda x: x["score"], reverse=True):
     atr_str = f"{e['atr']:.2f}" if e["atr"] else "-"
-    table.add_row(e["ticker"][:12], e["kurs"], str(e["score"]), e["signal"], e["rsi"], atr_str)
+    score = e["score"]
+    score_col = "green" if score >= 5 else "red" if score <= 0 else "yellow"
+    score_str = f"[{score_col}]{score}[/]"
+    try:
+        rsi_num = float(e["rsi"])
+        rsi_col = "green" if rsi_num < 35 else "red" if rsi_num > 70 else "white"
+        rsi_str = f"[{rsi_col}]{e['rsi']}[/]"
+    except (ValueError, TypeError):
+        rsi_str = e["rsi"]
+    table.add_row(e["ticker"][:12], e["kurs"], score_str, e["signal"], rsi_str, atr_str)
 
 if min_score is not None:
     schwelle_str = f"Modus: absolut | LONG >= {long_threshold} | SHORT <= {short_threshold}"
@@ -496,9 +514,10 @@ return
 
 ```
 ticker = args.ticker.upper()
-console.print(f"[cyan]Lade Daten für {ticker}...[/]")
+period = args.period if hasattr(args, "period") and args.period else "1y"
+console.print(f"[cyan]Lade Daten für {ticker} ({period})...[/]")
 
-df, split_flag, split_info = lade_daten(ticker)
+df, split_flag, split_info = lade_daten(ticker, period=period)
 spy_data = get_spy_returns()
 score, details = berechne_score(df, spy_returns=spy_data)
 
@@ -513,7 +532,7 @@ kurs_eur = to_eur(kurs, ticker, rates, last_price=kurs)
 sma20 = ta.trend.SMAIndicator(df["Close"], window=20).sma_indicator().iloc[-1]
 sma50 = ta.trend.SMAIndicator(df["Close"], window=50).sma_indicator().iloc[-1]
 sma200 = ta.trend.SMAIndicator(df["Close"], window=200).sma_indicator().iloc[-1]
-rsi = ta.momentum.RSIIndicator(df["Close"], window=14).rsi().iloc[-1]
+rsi = details.get("rsi_raw") or ta.momentum.RSIIndicator(df["Close"], window=14).rsi().iloc[-1]
 macd_obj = ta.trend.MACD(df["Close"])
 macd_h = macd_obj.macd_diff().iloc[-1]
 bb = ta.volatility.BollingerBands(df["Close"])
@@ -600,21 +619,21 @@ sc_table.add_column("Indikator")
 sc_table.add_column("Punkte", justify="right")
 
 score_map = {
-    "SMA200": ("Kurs > SMA200", "+1" if kurs > sma200 else "-3"),
-    "Cross": ("Golden Cross SMA50>SMA200", "+1"),
-    "RSI": (f"RSI={rsi:.1f}", details.get("RSI", "0")),
-    "MACD": (f"MACD={macd_h:.4f} {'bullisch' if macd_h > 0 else 'bärisch'}", details.get("MACD", "0")),
-    "SMA20": ("Kurs > SMA20 bullisch", details.get("SMA20", "+0")),
-    "SMA10": ("Kurs < SMA10", details.get("SMA10", "+0")),
-    "BB": ("Kurs unter BB-Lower", details.get("BB", "+0")),
-    "Vol": ("Volume Spike >1.5x", details.get("Vol", "+0")),
+    "SMA200": ("Kurs > SMA200", details.get("SMA200", "+0")),
+    "Cross":  ("Golden Cross SMA50>SMA200", details.get("Cross", "+0")),
+    "RSI":    (f"RSI={rsi:.1f}", details.get("RSI", "0")),
+    "MACD":   (f"MACD={macd_h:.4f} {'bullisch' if macd_h > 0 else 'bärisch'}", details.get("MACD", "0")),
+    "SMA20":  ("Kurs > SMA20 bullisch", details.get("SMA20", "+0")),
+    "SMA10":  ("Kurs < SMA10", details.get("SMA10", "+0")),
+    "BB":     ("Kurs unter BB-Lower", details.get("BB", "+0")),
+    "Vol":    ("Volume Spike >1.5x", details.get("Vol", "+0")),
     "Weekly": ("Weekly-Trend bullisch", details.get("Weekly", "+0")),
     "W-RSI>80": ("Weekly-RSI > 80 (Überhitzt)", details.get("W-RSI>80", "+0")),
-    "RS": (f"RS vs SPY: {rs_str}", details.get("RS", "0")),
-    "52W-H": ("52W Hoch Nähe (<10%)", details.get("52W-H", "+0")),
-    "52W-L": ("52W Tief Nähe (<10%)", details.get("52W-L", "+0")),
-    "Gap↑": ("Gap >3% bullisch", details.get("Gap↑", "+0")),
-    "Gap↓": ("Gap >3% bärisch", details.get("Gap↓", "+0")),
+    "RS":     (f"RS vs SPY: {rs_str}", details.get("RS", "0")),
+    "52W-H":  ("52W Hoch Nähe (<10%)", details.get("52W-H", "+0")),
+    "52W-L":  ("52W Tief Nähe (<10%)", details.get("52W-L", "+0")),
+    "Gap↑":   ("Gap >3% bullisch", details.get("Gap↑", "+0")),
+    "Gap↓":   ("Gap >3% bärisch", details.get("Gap↓", "+0")),
 }
 
 for key, (label, pts) in score_map.items():
@@ -627,34 +646,41 @@ console.print(Panel(sc_table, title=f"Score-Details → {score} Punkte", border_
 
 if atr:
     atr_eur = to_eur(atr, ticker, rates, last_price=kurs)
-    sl_fix = kurs_eur * 0.95
-    sl_atr = kurs_eur - 2 * atr_eur
+    sl_long  = kurs_eur - 2 * atr_eur
+    sl_short = kurs_eur + 2 * atr_eur
+    sl_long_fix  = kurs_eur * 0.95
+    sl_short_fix = kurs_eur * 1.05
     tp1 = kurs_eur * 1.08
     tp2 = kurs_eur * 1.15
-    tp3 = kurs_eur * 1.25
-    tp3_atr = kurs_eur + 3 * atr_eur
+    tp3 = kurs_eur + 3 * atr_eur
+    ds1 = kurs_eur * 0.92
+    ds2 = kurs_eur * 0.85
+    ds3 = kurs_eur - 3 * atr_eur
 
     risk_table = Table(box=box.SIMPLE)
     risk_table.add_column("Level", style="bold")
-    risk_table.add_column("Fix-Prozent", justify="right")
-    risk_table.add_column("ATR-basiert", justify="right")
-    risk_table.add_row("[red]Stop-Loss[/]", f"{sl_fix:.2f}€", f"{sl_atr:.2f}€")
-    risk_table.add_row("[green]TP1[/]", f"{tp1:.2f}€", "-")
-    risk_table.add_row("[green]TP2[/]", f"{tp2:.2f}€", "-")
-    risk_table.add_row("[green]TP3[/]", f"{tp3:.2f}€", f"{tp3_atr:.2f}€")
+    risk_table.add_column("LONG (Fix)", justify="right")
+    risk_table.add_column("LONG (ATR)", justify="right", style="green")
+    risk_table.add_column("SHORT (Fix)", justify="right")
+    risk_table.add_column("SHORT (ATR)", justify="right", style="red")
+    risk_table.add_row("[dim]Stop-Loss[/]",  f"{sl_long_fix:.2f}€",  f"{sl_long:.2f}€",  f"{sl_short_fix:.2f}€", f"{sl_short:.2f}€")
+    risk_table.add_row("[green]TP1[/]",       f"{tp1:.2f}€", "-",  f"{ds1:.2f}€", "-")
+    risk_table.add_row("[green]TP2[/]",       f"{tp2:.2f}€", "-",  f"{ds2:.2f}€", "-")
+    risk_table.add_row("[green]TP3[/]",       "-",           f"{tp3:.2f}€", "-",  f"{ds3:.2f}€")
 
-    console.print(Panel(risk_table, title="Risiko-Management (LONG)", border_style="red"))
+    console.print(Panel(risk_table, title="Risiko-Management (LONG & SHORT)", border_style="red"))
 
     depot = args.depot if hasattr(args, "depot") and args.depot else 10000
     risiko = depot * 0.02
-    sl_dist = kurs_eur - sl_atr
-    stueck = int(risiko / sl_dist) if sl_dist > 0 else 0
-    pos_wert = stueck * kurs_eur
+    sl_dist_long  = kurs_eur - sl_long
+    sl_dist_short = sl_short - kurs_eur
+    stueck_long  = int(risiko / sl_dist_long)  if sl_dist_long  > 0 else 0
+    stueck_short = int(risiko / sl_dist_short) if sl_dist_short > 0 else 0
 
     console.print(Panel(
         f"Max-Risiko: [bold]{risiko:.0f}€ (2%)[/]\n"
-        f"Stückzahl: [bold]{stueck} Aktien[/]\n"
-        f"Positionswert: [bold]{pos_wert:.0f}€[/]",
+        f"[green]LONG[/]  → {stueck_long} Aktien × {kurs_eur:.2f}€ = [bold]{stueck_long * kurs_eur:.0f}€[/]\n"
+        f"[red]SHORT[/] → {stueck_short} Aktien × {kurs_eur:.2f}€ = [bold]{stueck_short * kurs_eur:.0f}€[/]",
         title=f"Position Sizing (2%-Regel, Depot: {depot:,.0f}€)", border_style="dim"
     ))
 ```
@@ -685,7 +711,7 @@ console.print(Panel(
     f"[bold]Depot:[/] {depot:,.0f}€\n"
     f"[bold]Strategie:[/] Score Top 20% = LONG | Bottom 20% = SHORT\n"
     f"[bold]Schwelle:[/] rollierend (kein Look-Ahead)",
-    title=f"📊 Backtest v3.0 – {label}", border_style="blue"
+    title=f"📊 Backtest v3.1 – {label}", border_style="blue"
 ))
 
 rates = get_eur_rates()
@@ -753,7 +779,7 @@ with Progress(
 
                 if score >= long_thresh:
                     ret = (verkauf / kauf - 1) * 100
-                    atr_raw = atr_series.iloc[i - 1] if i > 0 and not pd.isna(atr_series.iloc[i - 1]) else None
+                    atr_raw = atr_series.iloc[i] if not pd.isna(atr_series.iloc[i]) else None
                     if atr_raw and atr_raw > 0:
                         atr_eur = to_eur(atr_raw, ticker, rates, last_price=kauf)
                         sl_dist = max(2 * atr_eur, kauf_eur * 0.02)
@@ -774,7 +800,7 @@ with Progress(
 
                 elif score <= short_thresh:
                     ret = (kauf / verkauf - 1) * 100
-                    atr_raw = atr_series.iloc[i - 1] if i > 0 and not pd.isna(atr_series.iloc[i - 1]) else None
+                    atr_raw = atr_series.iloc[i] if not pd.isna(atr_series.iloc[i]) else None
                     if atr_raw and atr_raw > 0:
                         atr_eur = to_eur(atr_raw, ticker, rates, last_price=kauf)
                         sl_dist = max(2 * atr_eur, kauf_eur * 0.02)
@@ -898,7 +924,7 @@ elif gesamt_wr >= 60:
 
 def main():
 parser = argparse.ArgumentParser(
-description=“📊 Stock Scanner v3.0”,
+description=“📊 Stock Scanner v3.1”,
 formatter_class=argparse.RawDescriptionHelpFormatter,
 epilog=”””
 Beispiele:
