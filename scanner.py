@@ -1,8 +1,20 @@
 #!/usr/bin/env python3
 
+# -*- coding: utf-8 -*-
+
+“””
+Stock Scanner v3.1
+v2.x: EUR-API, RSI-Window, NaN-Guards, GBp-Dynamik, Delisting-7d, Weekly-RSI-Penalty,
+–min-score, SPY-3mo, SMA20/BB→close_full, ATR-SL Backtest, Watchlist-Cleanup
+v3.0: Duplikate entfernt (IREN/XYZ), Score-Konstanten, RSI-Cache, ATR O(n), sleep 0.01,
+ATR EUR-konvertiert in Scan, score_map aus details, RSI aus Cache in cmd_info
+v3.1: Score/RSI Farb-Coding, cmd_info -p Period, LONG+SHORT Risiko-Tabelle,
+ATR-Index Backtest (iloc[i]), All-equal-Scores Edge Case
+“””
+
 import argparse, warnings, time, csv, logging
 from datetime import datetime, timezone
-
+warnings.filterwarnings(“ignore”)
 import yfinance as yf
 import pandas as pd
 import ta
@@ -669,10 +681,10 @@ if atr:
     stueck_short = int(risiko / sl_dist_short) if sl_dist_short > 0 else 0
 
     console.print(Panel(
-        f"Max-Risiko: [bold]{risiko:.0f}€ (2%)[/]\n"
-        f"[green]LONG[/]  → {stueck_long} Aktien × {kurs_eur:.2f}€ = [bold]{stueck_long * kurs_eur:.0f}€[/]\n"
-        f"[red]SHORT[/] → {stueck_short} Aktien × {kurs_eur:.2f}€ = [bold]{stueck_short * kurs_eur:.0f}€[/]",
-        title=f"Position Sizing (2%-Regel, Depot: {depot:,.0f}€)", border_style="dim"
+        f"Max-Risiko: [bold]{risiko:.0f}EUR (2%)[/]\n"
+        f"[green]LONG[/]  -> {stueck_long} Aktien x {kurs_eur:.2f}EUR = [bold]{stueck_long * kurs_eur:.0f}EUR[/]\n"
+        f"[red]SHORT[/] -> {stueck_short} Aktien x {kurs_eur:.2f}EUR = [bold]{stueck_short * kurs_eur:.0f}EUR[/]",
+        title=f"Position Sizing (2%-Regel, Depot: {depot:,.0f}EUR)", border_style="dim"
     ))
 ```
 
@@ -736,7 +748,7 @@ with Progress(
                 progress.advance(task)
                 continue
 
-            # ATR-Serie einmal vorausberechnen (O(n) statt O(n²) im Trade-Loop)
+            # ATR-Serie einmal vorausberechnen (O(n) statt O(n*n) im Trade-Loop)
             try:
                 atr_series = ta.volatility.AverageTrueRange(
                     df["High"], df["Low"], df["Close"], window=14
